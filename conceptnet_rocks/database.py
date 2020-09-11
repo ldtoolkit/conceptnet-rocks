@@ -1,4 +1,5 @@
-from a_conceptnet.conceptnet5.edges import transform_for_linked_data
+from conceptnet_rocks import arangodb
+from conceptnet_rocks.conceptnet5.edges import transform_for_linked_data
 from arango import ArangoClient
 from pathlib import Path
 from tqdm import tqdm
@@ -6,6 +7,9 @@ from typing import Optional, Any, Dict, List
 import base64
 import csv
 import json
+
+
+DEFAULT_DATABASE = "conceptnet"
 
 
 def convert_uri_to_ascii(uri: str) -> str:
@@ -30,16 +34,39 @@ def line_count(file_path):
     return result
 
 
-def load_dump_into_database(dump_path: Path, edge_count: Optional[int] = None):
-    client = ArangoClient(hosts="http://localhost:8529")
+def load_dump_into_database(
+        dump_path: Path,
+        edge_count: Optional[int] = None,
+        connection_uri: str = arangodb.DEFAULT_CONNECTION_URI,
+        database: str = DEFAULT_DATABASE,
+        root_password: str = arangodb.DEFAULT_ROOT_PASSWORD,
+        arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
+        data_path: Path = arangodb.DEFAULT_DATA_PATH,
+):
+    root_credentials = {
+        "username": "root",
+        "password": root_password,
+    }
+    if not arangodb.is_running(connection_uri=connection_uri, database=arangodb.SYSTEM_DATABASE, **root_credentials):
+        arangodb_arbiter = arangodb.start(
+            exe_path=arangodb_exe_path,
+            data_path=data_path,
+            connection_uri=connection_uri,
+            database=arangodb.SYSTEM_DATABASE,
+            **root_credentials,
+        )
+    else:
+        arangodb_arbiter = None
 
-    sys_db = client.db("_system", username="root", password="")
-    if sys_db.has_database("conceptnet"):
-        raise RuntimeError("Database conceptnet already exist")
+    client = ArangoClient(hosts=connection_uri)
 
-    sys_db.create_database("conceptnet")
+    sys_db = client.db(arangodb.SYSTEM_DATABASE, **root_credentials)
+    if sys_db.has_database(database):
+        raise RuntimeError(f"Database {database} already exist")
 
-    db = client.db("conceptnet", username="root")
+    sys_db.create_database(database)
+
+    db = client.db(database, **root_credentials)
 
     graph = db.create_graph("conceptnet")
 
@@ -83,6 +110,10 @@ def load_dump_into_database(dump_path: Path, edge_count: Optional[int] = None):
 
             edge_data_dict = json.loads(edge_data)
             edge_data_dict["dataset"] += "/"
+            edge_data_dict["sources"] = [
+                {"contributor": f"{source['contributor']}/", "process": f"{source['process']}/"}
+                for source in edge_data_dict["sources"]
+            ]
 
             start_node_key = convert_uri_to_ascii(start_uri)
             node_list.append({"_key": start_node_key, "uri": start_uri})
@@ -106,13 +137,36 @@ def load_dump_into_database(dump_path: Path, edge_count: Optional[int] = None):
     edges.add_persistent_index(["rel"])
     edges.add_persistent_index(["uri"], unique=True)
 
+    # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
+    # Please note that filtering using array indexes only works from within AQL queries and only if the query filters on
+    # the indexed attribute using the IN operator. The other comparison operators (==, !=, >, >=, <, <=, ANY, ALL, NONE)
+    # cannot use array indexes currently.
+    # edges.add_persistent_index(["sources[*].activity"])
+    # edges.add_persistent_index(["sources[*].contributor"])
+    # edges.add_persistent_index(["sources[*].process"])
+
+    arangodb.stop_arbiter(arangodb_arbiter)
+
 
 class AssertionFinder:
-    def __init__(self):
+    def __init__(
+            self,
+            arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
+            data_path: Path = arangodb.DEFAULT_DATA_PATH,
+    ):
+        if not arangodb.is_running():
+            self._arangodb_arbiter = arangodb.start(exe_path=arangodb_exe_path, data_path=data_path)
+        else:
+            self._arangodb_arbiter = None
+
         self._client = ArangoClient(hosts="http://localhost:8529")
         self._db = self._client.db("conceptnet", username="root")
 
+    def __del__(self):
+        arangodb.stop_arbiter(self._arangodb_arbiter)
+
     def lookup(self, uri: str, limit: int = 100, offset: int = 0):
+        # noinspection PyShadowingNames
         def perform_query(query: str, query_vars: Dict[str, Any]) -> List[Dict[str, Any]]:
             return [
                 transform_for_linked_data(data)
@@ -121,11 +175,19 @@ class AssertionFinder:
 
         limit_and_merge = """
             limit @offset, @limit
+            let trimmed_sources = (
+              for source in edge.sources
+                return {
+                  contributor: rtrim(source.contributor, "/"),
+                  process: rtrim(source.process, "/"),
+                }
+            )
             return merge({
               start: rtrim(document(edge._from).uri, "/"),
               end: rtrim(document(edge._to).uri, "/"),
-              dataset: rtrim(edge.dataset, "/")
-            }, unset(edge, "_from", "_to", "_key", "_id", "_rev", "dataset"))
+              dataset: rtrim(edge.dataset, "/"),
+              sources: trimmed_sources,
+            }, unset(edge, "_from", "_to", "_key", "_id", "_rev", "dataset", "sources"))
         """
 
         if uri.startswith('/c/') or uri.startswith('http'):
@@ -145,6 +207,21 @@ class AssertionFinder:
             """
             query_vars = {"limit": limit, "offset": offset, "rel": uri}
             return perform_query(query=query, query_vars=query_vars)
+        elif uri.startswith('/s/'):
+            query = f"""
+                for edge in edges
+                  for s in edge.sources
+                    filter (
+                      (s.activity >= concat(@source, "/") and s.activity < concat(@source, "0"))
+                      or
+                      (s.contributor >= concat(@source, "/") and s.contributor < concat(@source, "0"))
+                      or
+                      (s.process >= concat(@source, "/") and s.process < concat(@source, "0"))
+                    )
+                    {limit_and_merge}
+            """
+            query_vars = {"limit": limit, "offset": offset, "source": uri}
+            return perform_query(query=query, query_vars=query_vars)
         elif uri.startswith('/d/'):
             query = f"""
                 for edge in edges
@@ -163,3 +240,7 @@ class AssertionFinder:
             return perform_query(query=query, query_vars=query_vars)
         else:
             raise ValueError(f"{uri} isn't a supported")
+
+
+if __name__ == "__main__":
+    af = AssertionFinder()

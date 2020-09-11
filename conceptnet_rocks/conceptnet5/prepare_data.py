@@ -1,4 +1,4 @@
-from a_conceptnet.conceptnet5.uri import uri_prefixes
+from conceptnet_rocks.conceptnet5.uri import uri_prefixes
 
 
 def gin_indexable_edge(edge):

@@ -1,4 +1,4 @@
-from a_conceptnet.conceptnet5.uri import uri_to_label, is_term, split_uri, get_uri_language, uri_prefix
+from conceptnet_rocks.conceptnet5.uri import uri_to_label, is_term, split_uri, get_uri_language, uri_prefix
 from urllib.parse import urlparse
 
 

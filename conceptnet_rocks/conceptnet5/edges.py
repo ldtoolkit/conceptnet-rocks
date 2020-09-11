@@ -1,5 +1,5 @@
-from a_conceptnet.conceptnet5.nodes import ld_node
-from a_conceptnet.conceptnet5.uri import conjunction_uri
+from conceptnet_rocks.conceptnet5.nodes import ld_node
+from conceptnet_rocks.conceptnet5.uri import conjunction_uri
 
 
 def transform_for_linked_data(edge):

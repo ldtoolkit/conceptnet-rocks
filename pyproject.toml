@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "a-conceptnet"
+name = "conceptnet-rocks"
 version = "0.1.0"
 description = "Python library to work with ConceptNet offline"
 authors = ["Roman Inflianskas <infroma@gmail.com>"]
@@ -12,11 +12,12 @@ typer = "^0.3.2"
 tqdm = "^4.48.2"
 pySmartDL = "^1.3.3"
 circus = "^0.16.1"
+psutil = "^5.7.2"
 
 [tool.poetry.dev-dependencies]
 
 [tool.poetry.scripts]
-a-conceptnet = "a_conceptnet.cli:app"
+conceptnet-rocks = "conceptnet_rocks.cli:app"
 
 [build-system]
 requires = ["poetry>=0.12"]
