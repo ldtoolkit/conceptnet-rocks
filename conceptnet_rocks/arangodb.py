@@ -1,6 +1,7 @@
 from arango import ArangoClient, ArangoError
 from circus import get_arbiter
 from circus.arbiter import Arbiter
+from contextlib import suppress
 from pathlib import Path
 from pySmartDL import SmartDL
 from sys import platform
@@ -37,9 +38,14 @@ def install(path: Path = DEFAULT_INSTALL_PATH) -> None:
     path = path.expanduser()
 
     if path.exists():
-        raise FileExistsError(f"File exists: {path}")
+        if path.is_dir():
+            with suppress(StopIteration):
+                next(path.iterdir())
+                raise FileExistsError(f"Directory exists and is not empty: {path}")
+        else:
+            raise FileExistsError(f"File exists: {path}")
 
-    path.mkdir(parents=True)
+    path.mkdir(parents=True, exist_ok=True)
 
     url = "https://download.arangodb.com/arangodb37/Community/Linux/arangodb3-linux-3.7.2.tar.gz"
     downloader = SmartDL(url, str(path))
