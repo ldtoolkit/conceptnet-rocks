@@ -110,10 +110,15 @@ def load_dump_into_database(
 
             edge_data_dict = json.loads(edge_data)
             edge_data_dict["dataset"] += "/"
-            edge_data_dict["sources"] = [
-                {"contributor": f"{source['contributor']}/", "process": f"{source['process']}/"}
-                for source in edge_data_dict["sources"]
-            ]
+
+            def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
+                result = {}
+                for field in ["activity", "contributor", "process"]:
+                    if field in source:
+                        result[field] = source[field] + "/"
+                return result
+
+            edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
 
             start_node_key = convert_uri_to_ascii(start_uri)
             node_list.append({"_key": start_node_key, "uri": start_uri})
@@ -177,10 +182,11 @@ class AssertionFinder:
             limit @offset, @limit
             let trimmed_sources = (
               for source in edge.sources
-                return {
-                  contributor: rtrim(source.contributor, "/"),
-                  process: rtrim(source.process, "/"),
-                }
+                return merge(
+                  has(source, "activity") ? {activity: rtrim(source.activity, "/")} : {},
+                  has(source, "contributor") ? {contributor: rtrim(source.contributor, "/")} : {},
+                  has(source, "process") ? {process: rtrim(source.process, "/")} : {}
+                )
             )
             return merge({
               start: rtrim(document(edge._from).uri, "/"),
