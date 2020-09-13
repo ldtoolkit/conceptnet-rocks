@@ -14,7 +14,7 @@ import time
 
 
 ARANGODB_DEMON_PROCESS_NAME = "arangod"
-CONCEPTNET_ROCKS_PROCESS_NAME = "conceptnet-rocks"
+CONCEPTNET_ROCKS_START_ARGUMENT = "start-arangodb"
 DEFAULT_INSTALL_PATH = Path("~/.arangodb").expanduser()
 DEFAULT_DATA_PATH = DEFAULT_INSTALL_PATH / "data"
 DEFAULT_PORT = 8529
@@ -63,7 +63,7 @@ def install(path: Path = DEFAULT_INSTALL_PATH) -> None:
         p.chmod(p.stat().st_mode | stat.S_IEXEC)
 
 
-def get_arangodb_demon_process(port: int = DEFAULT_PORT) -> Optional[psutil.Process]:
+def get_arangodb_daemon_process(port: int = DEFAULT_PORT) -> Optional[psutil.Process]:
     try:
         result = next(proc for proc in psutil.process_iter() if proc.name() == ARANGODB_DEMON_PROCESS_NAME)
         if next(True for connection in result.connections() if connection.laddr.port == port):
@@ -78,7 +78,7 @@ def is_running(
         username: str = DEFAULT_USERNAME,
         password: str = DEFAULT_PASSWORD,
 ) -> bool:
-    if not bool(get_arangodb_demon_process()):
+    if not bool(get_arangodb_daemon_process()):
         return False
     client = ArangoClient(hosts=connection_uri)
     db = client.db(name=database, username=username, password=password)
@@ -121,11 +121,11 @@ def start(
 
 
 def stop():
-    arangodb_demon_process = get_arangodb_demon_process()
-    if arangodb_demon_process is not None:
-        arangodb_launch_script_process = arangodb_demon_process.parent()
+    arangodb_daemon_process = get_arangodb_daemon_process()
+    if arangodb_daemon_process is not None:
+        arangodb_launch_script_process = arangodb_daemon_process.parent()
         arangodb_launch_script_parent_process = arangodb_launch_script_process.parent()
-        if arangodb_launch_script_parent_process.name() == CONCEPTNET_ROCKS_PROCESS_NAME:
+        if CONCEPTNET_ROCKS_START_ARGUMENT in arangodb_launch_script_parent_process.cmdline():
             arangodb_launch_script_parent_process.terminate()
         else:
             arangodb_launch_script_process.terminate()
