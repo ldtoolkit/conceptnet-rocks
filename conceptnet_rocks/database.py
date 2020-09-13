@@ -156,14 +156,14 @@ class AssertionFinder:
             root_password: str = arangodb.DEFAULT_ROOT_PASSWORD,
             arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
             data_path: Path = arangodb.DEFAULT_DATA_PATH,
-            close_stderr: bool = False,
+            close_stdout_and_stderr: bool = False,
     ):
         self._arangodb_arbiter = arangodb.start_if_not_running(
             connection_uri=connection_uri,
             root_password=root_password,
             arangodb_exe_path=arangodb_exe_path,
             data_path=data_path,
-            close_stderr=close_stderr,
+            close_stdout_and_stderr=close_stdout_and_stderr,
         )
         self._client = ArangoClient(hosts=connection_uri)
         self._db = self._client.db(database, username="root", password=root_password)
