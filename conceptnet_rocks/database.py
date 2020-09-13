@@ -142,8 +142,7 @@ def load_dump_into_database(
         # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
         # Please note that filtering using array indexes only works from within AQL queries and only if the query
         # filters on the indexed attribute using the IN operator. The other comparison operators (==, !=, >, >=, <, <=,
-        #ANY, ALL, NONE)
-        # cannot use array indexes currently.
+        # ANY, ALL, NONE) cannot use array indexes currently.
         # edges.add_persistent_index(["sources[*].activity"])
         # edges.add_persistent_index(["sources[*].contributor"])
         # edges.add_persistent_index(["sources[*].process"])
