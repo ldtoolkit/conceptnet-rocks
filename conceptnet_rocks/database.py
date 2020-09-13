@@ -43,129 +43,128 @@ def load_dump_into_database(
         arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
         data_path: Path = arangodb.DEFAULT_DATA_PATH,
 ):
-    root_credentials = {
-        "username": "root",
-        "password": root_password,
-    }
-    if not arangodb.is_running(connection_uri=connection_uri, database=arangodb.SYSTEM_DATABASE, **root_credentials):
-        arangodb_arbiter = arangodb.start(
-            exe_path=arangodb_exe_path,
-            data_path=data_path,
-            connection_uri=connection_uri,
-            database=arangodb.SYSTEM_DATABASE,
-            **root_credentials,
+    with arangodb.instance(
+        connection_uri=connection_uri,
+        root_password=root_password,
+        arangodb_exe_path=arangodb_exe_path,
+        data_path=data_path,
+    ):
+        client = ArangoClient(hosts=connection_uri)
+
+        root_credentials = {
+            "username": "root",
+            "password": root_password,
+        }
+
+        sys_db = client.db(arangodb.SYSTEM_DATABASE, **root_credentials)
+        if sys_db.has_database(database):
+            raise RuntimeError(f"Database {database} already exist")
+
+        sys_db.create_database(database)
+
+        db = client.db(database, **root_credentials)
+
+        graph = db.create_graph("conceptnet")
+
+        graph.create_vertex_collection("nodes")
+
+        graph.create_edge_definition(
+            edge_collection="edges",
+            from_vertex_collections=["nodes"],
+            to_vertex_collections=["nodes"]
         )
-    else:
-        arangodb_arbiter = None
 
-    client = ArangoClient(hosts=connection_uri)
+        dump_path = Path(dump_path).expanduser().resolve()
 
-    sys_db = client.db(arangodb.SYSTEM_DATABASE, **root_credentials)
-    if sys_db.has_database(database):
-        raise RuntimeError(f"Database {database} already exist")
+        with open(str(dump_path), newline="") as f:
+            reader = csv.reader(f, delimiter="\t")
+            batch_size = 2**10
 
-    sys_db.create_database(database)
+            if edge_count is None:
+                edge_count = line_count(dump_path)
 
-    db = client.db(database, **root_credentials)
+            edge_list = []
+            node_list = []
 
-    graph = db.create_graph("conceptnet")
+            edges = db.collection("edges")
+            nodes = db.collection("nodes")
 
-    graph.create_vertex_collection("nodes")
+            for i, row in tqdm(enumerate(reader), unit=' edges', total=edge_count):
+                finished = i == edge_count
+                if i % batch_size == 0 or finished:
+                    edges.import_bulk(edge_list, on_duplicate="ignore")
+                    nodes.import_bulk(node_list, on_duplicate="ignore")
+                    edge_list.clear()
+                    node_list.clear()
+                    if finished:
+                        break
 
-    graph.create_edge_definition(
-        edge_collection="edges",
-        from_vertex_collections=["nodes"],
-        to_vertex_collections=["nodes"]
-    )
+                assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
 
-    dump_path = Path(dump_path).expanduser().resolve()
+                start_uri += "/"
+                end_uri += "/"
 
-    with open(str(dump_path), newline="") as f:
-        reader = csv.reader(f, delimiter="\t")
-        batch_size = 2**10
+                edge_data_dict = json.loads(edge_data)
+                edge_data_dict["dataset"] += "/"
 
-        if edge_count is None:
-            edge_count = line_count(dump_path)
+                def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
+                    result = {}
+                    for field in ["activity", "contributor", "process"]:
+                        if field in source:
+                            result[field] = source[field] + "/"
+                    return result
 
-        edge_list = []
-        node_list = []
+                edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
 
-        edges = db.collection("edges")
-        nodes = db.collection("nodes")
+                start_node_key = convert_uri_to_ascii(start_uri)
+                node_list.append({"_key": start_node_key, "uri": start_uri})
 
-        for i, row in tqdm(enumerate(reader), unit=' edges', total=edge_count):
-            finished = i == edge_count
-            if i % batch_size == 0 or finished:
-                edges.import_bulk(edge_list, on_duplicate="ignore")
-                nodes.import_bulk(node_list, on_duplicate="ignore")
-                edge_list.clear()
-                node_list.clear()
-                if finished:
-                    break
+                end_node_key = convert_uri_to_ascii(end_uri)
+                node_list.append({"_key": end_node_key, "uri": end_uri})
 
-            assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
+                start_node_id = get_node_id(start_node_key)
+                end_node_id = get_node_id(end_node_key)
 
-            start_uri += "/"
-            end_uri += "/"
+                edge_list.append({
+                    "_from": start_node_id,
+                    "_to": end_node_id,
+                    "uri": assertion_uri,
+                    "rel": relation_uri,
+                    **edge_data_dict,
+                })
 
-            edge_data_dict = json.loads(edge_data)
-            edge_data_dict["dataset"] += "/"
+        nodes.add_persistent_index(["uri"], unique=True)
+        edges.add_persistent_index(["dataset"])
+        edges.add_persistent_index(["rel"])
+        edges.add_persistent_index(["uri"], unique=True)
 
-            def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
-                result = {}
-                for field in ["activity", "contributor", "process"]:
-                    if field in source:
-                        result[field] = source[field] + "/"
-                return result
-
-            edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
-
-            start_node_key = convert_uri_to_ascii(start_uri)
-            node_list.append({"_key": start_node_key, "uri": start_uri})
-
-            end_node_key = convert_uri_to_ascii(end_uri)
-            node_list.append({"_key": end_node_key, "uri": end_uri})
-
-            start_node_id = get_node_id(start_node_key)
-            end_node_id = get_node_id(end_node_key)
-
-            edge_list.append({
-                "_from": start_node_id,
-                "_to": end_node_id,
-                "uri": assertion_uri,
-                "rel": relation_uri,
-                **edge_data_dict,
-            })
-
-    nodes.add_persistent_index(["uri"], unique=True)
-    edges.add_persistent_index(["dataset"])
-    edges.add_persistent_index(["rel"])
-    edges.add_persistent_index(["uri"], unique=True)
-
-    # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
-    # Please note that filtering using array indexes only works from within AQL queries and only if the query filters on
-    # the indexed attribute using the IN operator. The other comparison operators (==, !=, >, >=, <, <=, ANY, ALL, NONE)
-    # cannot use array indexes currently.
-    # edges.add_persistent_index(["sources[*].activity"])
-    # edges.add_persistent_index(["sources[*].contributor"])
-    # edges.add_persistent_index(["sources[*].process"])
-
-    arangodb.stop_arbiter(arangodb_arbiter)
+        # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
+        # Please note that filtering using array indexes only works from within AQL queries and only if the query
+        # filters on the indexed attribute using the IN operator. The other comparison operators (==, !=, >, >=, <, <=,
+        #ANY, ALL, NONE)
+        # cannot use array indexes currently.
+        # edges.add_persistent_index(["sources[*].activity"])
+        # edges.add_persistent_index(["sources[*].contributor"])
+        # edges.add_persistent_index(["sources[*].process"])
 
 
 class AssertionFinder:
     def __init__(
             self,
+            database: str = DEFAULT_DATABASE,
+            connection_uri: str = arangodb.DEFAULT_CONNECTION_URI,
+            root_password: str = arangodb.DEFAULT_ROOT_PASSWORD,
             arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
             data_path: Path = arangodb.DEFAULT_DATA_PATH,
     ):
-        if not arangodb.is_running():
-            self._arangodb_arbiter = arangodb.start(exe_path=arangodb_exe_path, data_path=data_path)
-        else:
-            self._arangodb_arbiter = None
-
-        self._client = ArangoClient(hosts="http://localhost:8529")
-        self._db = self._client.db("conceptnet", username="root")
+        self._arangodb_arbiter = arangodb.start_if_not_running(
+            connection_uri=connection_uri,
+            root_password=root_password,
+            arangodb_exe_path=arangodb_exe_path,
+            data_path=data_path,
+        )
+        self._client = ArangoClient(hosts=connection_uri)
+        self._db = self._client.db(database, username="root", password=root_password)
 
     def __del__(self):
         arangodb.stop_arbiter(self._arangodb_arbiter)

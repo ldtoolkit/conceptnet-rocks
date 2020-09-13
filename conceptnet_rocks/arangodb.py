@@ -1,7 +1,7 @@
 from arango import ArangoClient, ArangoError
 from circus import get_arbiter
 from circus.arbiter import Arbiter
-from contextlib import suppress
+from contextlib import suppress, contextmanager
 from pathlib import Path
 from pySmartDL import SmartDL
 from sys import platform
@@ -136,3 +136,44 @@ def stop_arbiter(arbiter: Optional[Arbiter]):
     # noinspection PyUnresolvedReferences
     while arbiter.is_alive():
         time.sleep(STOP_SLEEP_DELAY)
+
+
+def start_if_not_running(
+        connection_uri: str = DEFAULT_CONNECTION_URI,
+        root_password: str = DEFAULT_ROOT_PASSWORD,
+        arangodb_exe_path: Path = DEFAULT_INSTALL_PATH,
+        data_path: Path = DEFAULT_DATA_PATH,
+):
+    root_credentials = {
+        "username": "root",
+        "password": root_password,
+    }
+    if not is_running(connection_uri=connection_uri, database=SYSTEM_DATABASE, **root_credentials):
+        return start(
+            exe_path=arangodb_exe_path,
+            data_path=data_path,
+            connection_uri=connection_uri,
+            database=SYSTEM_DATABASE,
+            **root_credentials,
+        )
+    else:
+        return None
+
+
+@contextmanager
+def instance(
+        connection_uri: str = DEFAULT_CONNECTION_URI,
+        root_password: str = DEFAULT_ROOT_PASSWORD,
+        arangodb_exe_path: Path = DEFAULT_INSTALL_PATH,
+        data_path: Path = DEFAULT_DATA_PATH,
+):
+    arangodb_arbiter = start_if_not_running(
+        connection_uri=connection_uri,
+        root_password=root_password,
+        arangodb_exe_path=arangodb_exe_path,
+        data_path=data_path,
+    )
+
+    yield
+
+    stop_arbiter(arangodb_arbiter)
