@@ -248,6 +248,9 @@ class AssertionFinder:
         else:
             raise ValueError(f"{uri} isn't a supported")
 
+    def clear_cache(self) -> None:
+        self._db.aql.cache.clear()
+
 
 if __name__ == "__main__":
     af = AssertionFinder()
