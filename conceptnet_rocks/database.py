@@ -5,7 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import Optional, Any, Dict, List
 import base64
-import csv
+import dask.dataframe as dd
 import json
 
 
@@ -76,62 +76,63 @@ def load_dump_into_database(
 
         dump_path = Path(dump_path).expanduser().resolve()
 
-        with open(str(dump_path), newline="") as f:
-            reader = csv.reader(f, delimiter="\t")
-            batch_size = 2**10
+        df = dd.read_csv(dump_path, sep="\t", header=None)
+        # with open(str(dump_path), newline="") as f:
+        #     reader = csv.reader(f, delimiter="\t")
+        batch_size = 2**10
 
-            if edge_count is None:
-                edge_count = line_count(dump_path)
+        if edge_count is None:
+            edge_count = line_count(dump_path)
 
-            edge_list = []
-            node_list = []
+        edge_list = []
+        node_list = []
 
-            edges = db.collection("edges")
-            nodes = db.collection("nodes")
+        edges = db.collection("edges")
+        nodes = db.collection("nodes")
 
-            for i, row in tqdm(enumerate(reader), unit=' edges', total=edge_count):
-                finished = i == edge_count
-                if i % batch_size == 0 or finished:
-                    edges.import_bulk(edge_list, on_duplicate="ignore")
-                    nodes.import_bulk(node_list, on_duplicate="ignore")
-                    edge_list.clear()
-                    node_list.clear()
-                    if finished:
-                        break
+        for row in tqdm(df.itertuples(), unit=' edges', initial=1, total=edge_count):
+            i, assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
 
-                assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
+            start_uri += "/"
+            end_uri += "/"
 
-                start_uri += "/"
-                end_uri += "/"
+            edge_data_dict = json.loads(edge_data)
+            edge_data_dict["dataset"] += "/"
 
-                edge_data_dict = json.loads(edge_data)
-                edge_data_dict["dataset"] += "/"
+            def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
+                result = {}
+                for field in ["activity", "contributor", "process"]:
+                    if field in source:
+                        result[field] = source[field] + "/"
+                return result
 
-                def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
-                    result = {}
-                    for field in ["activity", "contributor", "process"]:
-                        if field in source:
-                            result[field] = source[field] + "/"
-                    return result
+            edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
 
-                edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
+            start_node_key = convert_uri_to_ascii(start_uri)
+            node_list.append({"_key": start_node_key, "uri": start_uri})
 
-                start_node_key = convert_uri_to_ascii(start_uri)
-                node_list.append({"_key": start_node_key, "uri": start_uri})
+            end_node_key = convert_uri_to_ascii(end_uri)
+            node_list.append({"_key": end_node_key, "uri": end_uri})
 
-                end_node_key = convert_uri_to_ascii(end_uri)
-                node_list.append({"_key": end_node_key, "uri": end_uri})
+            start_node_id = get_node_id(start_node_key)
+            end_node_id = get_node_id(end_node_key)
 
-                start_node_id = get_node_id(start_node_key)
-                end_node_id = get_node_id(end_node_key)
+            edge_list.append({
+                "_from": start_node_id,
+                "_to": end_node_id,
+                "uri": assertion_uri,
+                "rel": relation_uri,
+                **edge_data_dict,
+            })
 
-                edge_list.append({
-                    "_from": start_node_id,
-                    "_to": end_node_id,
-                    "uri": assertion_uri,
-                    "rel": relation_uri,
-                    **edge_data_dict,
-                })
+            finished = i == edge_count - 1
+            if i % batch_size == 0 or finished:
+                edges.import_bulk(edge_list, on_duplicate="ignore")
+                nodes.import_bulk(node_list, on_duplicate="ignore")
+                edge_list.clear()
+                node_list.clear()
+                if finished:
+                    break
 
         nodes.add_persistent_index(["uri"], unique=True)
         edges.add_persistent_index(["dataset"])
@@ -156,12 +157,14 @@ class AssertionFinder:
             root_password: str = arangodb.DEFAULT_ROOT_PASSWORD,
             arangodb_exe_path: Path = arangodb.DEFAULT_INSTALL_PATH,
             data_path: Path = arangodb.DEFAULT_DATA_PATH,
+            close_stderr: bool = False,
     ):
         self._arangodb_arbiter = arangodb.start_if_not_running(
             connection_uri=connection_uri,
             root_password=root_password,
             arangodb_exe_path=arangodb_exe_path,
             data_path=data_path,
+            close_stderr=close_stderr,
         )
         self._client = ArangoClient(hosts=connection_uri)
         self._db = self._client.db(database, username="root", password=root_password)
@@ -187,7 +190,7 @@ class AssertionFinder:
                   has(source, "process") ? {process: rtrim(source.process, "/")} : {}
                 )
             )
-            return merge({
+            return distinct merge({
               start: rtrim(document(edge._from).uri, "/"),
               end: rtrim(document(edge._to).uri, "/"),
               dataset: rtrim(edge.dataset, "/"),

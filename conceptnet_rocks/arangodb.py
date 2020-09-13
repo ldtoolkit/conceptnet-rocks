@@ -96,6 +96,7 @@ def start(
         database: str = SYSTEM_DATABASE,
         username: str = DEFAULT_USERNAME,
         password: str = DEFAULT_PASSWORD,
+        close_stderr: bool = False,
 ) -> Arbiter:
     if exe_path.name != "arangodb":
         exe_path = get_exe_path(exe_path)
@@ -107,6 +108,7 @@ def start(
         "cmd": f"{exe_path} --starter.mode single --starter.data-dir {data_path}",
         "working_dir": working_dir_path,
         "env": {"PATH": env_path},
+        "close_child_stderr": close_stderr,
     }], background=True)
 
     arbiter.start()
@@ -143,6 +145,7 @@ def start_if_not_running(
         root_password: str = DEFAULT_ROOT_PASSWORD,
         arangodb_exe_path: Path = DEFAULT_INSTALL_PATH,
         data_path: Path = DEFAULT_DATA_PATH,
+        close_stderr: bool = False,
 ):
     root_credentials = {
         "username": "root",
@@ -154,6 +157,7 @@ def start_if_not_running(
             data_path=data_path,
             connection_uri=connection_uri,
             database=SYSTEM_DATABASE,
+            close_stderr=close_stderr,
             **root_credentials,
         )
     else:
@@ -166,12 +170,14 @@ def instance(
         root_password: str = DEFAULT_ROOT_PASSWORD,
         arangodb_exe_path: Path = DEFAULT_INSTALL_PATH,
         data_path: Path = DEFAULT_DATA_PATH,
+        close_stderr: bool = False,
 ):
     arangodb_arbiter = start_if_not_running(
         connection_uri=connection_uri,
         root_password=root_password,
         arangodb_exe_path=arangodb_exe_path,
         data_path=data_path,
+        close_stderr=close_stderr,
     )
 
     yield
