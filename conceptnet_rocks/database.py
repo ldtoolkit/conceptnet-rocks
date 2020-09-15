@@ -92,6 +92,8 @@ def load_dump_into_database(
 
         if not nodes_path.is_file() or not edges_path.is_file():
             with open(nodes_path, "wb") as nodes_file, open(edges_path, "wb") as edges_file:
+                nodes_keys = set()
+
                 for row in tqdm(df.itertuples(), unit=' edges', total=edge_count):
                     i, assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
 
@@ -114,10 +116,14 @@ def load_dump_into_database(
                     ]
 
                     start_node_key = convert_uri_to_ascii(start_uri)
-                    node_list.append({"_key": start_node_key, "uri": start_uri})
+                    if start_node_key not in nodes_keys:
+                        nodes_keys.add(start_node_key)
+                        node_list.append({"_key": start_node_key, "uri": start_uri})
 
                     end_node_key = convert_uri_to_ascii(end_uri)
-                    node_list.append({"_key": end_node_key, "uri": end_uri})
+                    if end_node_key not in nodes_keys:
+                        nodes_keys.add(end_node_key)
+                        node_list.append({"_key": end_node_key, "uri": end_uri})
 
                     start_node_id = get_node_id(start_node_key)
                     end_node_id = get_node_id(end_node_key)
@@ -156,6 +162,8 @@ def load_dump_into_database(
                 "--server.password", root_password,
                 "--collection", collection,
                 "--on-duplicate", "ignore",
+                "--skip-validation",
+                "--log.level", "error",
             ])
             file_path.unlink()
 
