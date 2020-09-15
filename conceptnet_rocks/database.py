@@ -1,10 +1,10 @@
 from conceptnet_rocks import arangodb
 from conceptnet_rocks.conceptnet5.edges import transform_for_linked_data
 from arango import ArangoClient
+from hashlib import sha1
 from pathlib import Path
 from tqdm import tqdm
 from typing import Optional, Any, Dict, List
-import base64
 import dask.dataframe as dd
 import json
 
@@ -13,7 +13,7 @@ DEFAULT_DATABASE = "conceptnet"
 
 
 def convert_uri_to_ascii(uri: str) -> str:
-    return base64.b64encode(uri.encode(), altchars=b'+-').decode()
+    return sha1(uri.encode()).hexdigest()
 
 
 def get_node_id(uri_ascii: str) -> str:
@@ -77,8 +77,6 @@ def load_dump_into_database(
         dump_path = Path(dump_path).expanduser().resolve()
 
         df = dd.read_csv(dump_path, sep="\t", header=None)
-        # with open(str(dump_path), newline="") as f:
-        #     reader = csv.reader(f, delimiter="\t")
         batch_size = 2**10
 
         if edge_count is None:
@@ -127,10 +125,10 @@ def load_dump_into_database(
 
             finished = i == edge_count - 1
             if i % batch_size == 0 or finished:
-                edges.import_bulk(edge_list, on_duplicate="ignore")
                 nodes.import_bulk(node_list, on_duplicate="ignore")
-                edge_list.clear()
+                edges.import_bulk(edge_list, on_duplicate="ignore")
                 node_list.clear()
+                edge_list.clear()
                 if finished:
                     break
 
