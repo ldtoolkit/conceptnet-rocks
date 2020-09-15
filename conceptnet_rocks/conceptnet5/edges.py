@@ -48,6 +48,11 @@ def transform_for_linked_data(edge):
         else:
             edge['rel'] = ld_node(rel_uri, None)
 
+    if edge.get('surfaceText'):
+        edge['surfaceText'] = None
+
+    edge['weight'] = float(edge['weight'])
+
     return edge
 
 
