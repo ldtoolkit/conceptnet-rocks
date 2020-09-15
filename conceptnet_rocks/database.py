@@ -169,9 +169,14 @@ def load_dump_into_database(
 
         nodes = db.collection("nodes")
         edges = db.collection("edges")
+
+        print("Creating nodes.uri index")
         nodes.add_persistent_index(["uri"], unique=True)
+        print("Creating edges.dataset index")
         edges.add_persistent_index(["dataset"])
+        print("Creating edges.rel index")
         edges.add_persistent_index(["rel"])
+        print("Creating edges.uri index")
         edges.add_persistent_index(["uri"], unique=True)
 
         # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
