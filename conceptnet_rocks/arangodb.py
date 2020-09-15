@@ -27,8 +27,8 @@ START_SLEEP_DELAY = 0.1
 STOP_SLEEP_DELAY = 0.1
 
 
-def get_exe_path(path: Path = DEFAULT_INSTALL_PATH) -> Path:
-    return path / "bin" / "arangodb" if path.name != "arangodb" else path
+def get_exe_path(path: Path = DEFAULT_INSTALL_PATH, program_name: str = "arangodb") -> Path:
+    return path / "bin" / program_name if path.name != "arangodb" else path
 
 
 def install(path: Path = DEFAULT_INSTALL_PATH) -> None:

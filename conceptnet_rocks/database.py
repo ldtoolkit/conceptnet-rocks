@@ -1,12 +1,14 @@
+from arango import ArangoClient
 from conceptnet_rocks import arangodb
 from conceptnet_rocks.conceptnet5.edges import transform_for_linked_data
-from arango import ArangoClient
 from hashlib import sha1
 from pathlib import Path
 from tqdm import tqdm
 from typing import Optional, Any, Dict, List
 import dask.dataframe as dd
-import json
+import orjson
+import os
+import subprocess
 
 
 DEFAULT_DATABASE = "conceptnet"
@@ -85,53 +87,80 @@ def load_dump_into_database(
         edge_list = []
         node_list = []
 
-        edges = db.collection("edges")
+        nodes_path = data_path / "nodes.jsonl"
+        edges_path = data_path / "edges.jsonl"
+
+        if not nodes_path.is_file() or not edges_path.is_file():
+            with open(nodes_path, "wb") as nodes_file, open(edges_path, "wb") as edges_file:
+                for row in tqdm(df.itertuples(), unit=' edges', total=edge_count):
+                    i, assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
+
+                    start_uri += "/"
+                    end_uri += "/"
+
+                    edge_data_dict = orjson.loads(edge_data)
+                    edge_data_dict["dataset"] += "/"
+
+                    def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
+                        result = {}
+                        for field in ["activity", "contributor", "process"]:
+                            if field in source:
+                                result[field] = source[field] + "/"
+                        return result
+
+                    edge_data_dict["sources"] = [
+                        source_with_trailing_slash(source)
+                        for source in edge_data_dict["sources"]
+                    ]
+
+                    start_node_key = convert_uri_to_ascii(start_uri)
+                    node_list.append({"_key": start_node_key, "uri": start_uri})
+
+                    end_node_key = convert_uri_to_ascii(end_uri)
+                    node_list.append({"_key": end_node_key, "uri": end_uri})
+
+                    start_node_id = get_node_id(start_node_key)
+                    end_node_id = get_node_id(end_node_key)
+
+                    edge_list.append({
+                        "_from": start_node_id,
+                        "_to": end_node_id,
+                        "uri": assertion_uri,
+                        "rel": relation_uri,
+                        **edge_data_dict,
+                    })
+
+                    finished = i == edge_count - 1
+                    if i % batch_size == 0 or finished:
+                        for node in node_list:
+                            nodes_file.write(orjson.dumps(node))
+                            nodes_file.write(b"\n")
+                        for edge in edge_list:
+                            edges_file.write(orjson.dumps(edge))
+                            edges_file.write(b"\n")
+                        node_list.clear()
+                        edge_list.clear()
+                        if finished:
+                            break
+
+        arangoimport_path = arangodb.get_exe_path(path=arangodb_exe_path, program_name="arangoimport")
+        for file_path, collection in [(nodes_path, "nodes"), (edges_path, "edges")]:
+            subprocess.run([
+                arangoimport_path,
+                "--threads", f"{os.cpu_count()}",
+                "--file", file_path,
+                "--type", "jsonl",
+                "--server.database", database,
+                "--server.endpoint", connection_uri.replace("http", "tcp"),
+                "--server.username", "root",
+                "--server.password", root_password,
+                "--collection", collection,
+                "--on-duplicate", "ignore",
+            ])
+            file_path.unlink()
+
         nodes = db.collection("nodes")
-
-        for row in tqdm(df.itertuples(), unit=' edges', initial=1, total=edge_count):
-            i, assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
-
-            start_uri += "/"
-            end_uri += "/"
-
-            edge_data_dict = json.loads(edge_data)
-            edge_data_dict["dataset"] += "/"
-
-            def source_with_trailing_slash(source: Dict[str, str]) -> Dict[str, str]:
-                result = {}
-                for field in ["activity", "contributor", "process"]:
-                    if field in source:
-                        result[field] = source[field] + "/"
-                return result
-
-            edge_data_dict["sources"] = [source_with_trailing_slash(source) for source in edge_data_dict["sources"]]
-
-            start_node_key = convert_uri_to_ascii(start_uri)
-            node_list.append({"_key": start_node_key, "uri": start_uri})
-
-            end_node_key = convert_uri_to_ascii(end_uri)
-            node_list.append({"_key": end_node_key, "uri": end_uri})
-
-            start_node_id = get_node_id(start_node_key)
-            end_node_id = get_node_id(end_node_key)
-
-            edge_list.append({
-                "_from": start_node_id,
-                "_to": end_node_id,
-                "uri": assertion_uri,
-                "rel": relation_uri,
-                **edge_data_dict,
-            })
-
-            finished = i == edge_count - 1
-            if i % batch_size == 0 or finished:
-                nodes.import_bulk(node_list, on_duplicate="ignore")
-                edges.import_bulk(edge_list, on_duplicate="ignore")
-                node_list.clear()
-                edge_list.clear()
-                if finished:
-                    break
-
+        edges = db.collection("edges")
         nodes.add_persistent_index(["uri"], unique=True)
         edges.add_persistent_index(["dataset"])
         edges.add_persistent_index(["rel"])
