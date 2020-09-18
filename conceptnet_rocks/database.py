@@ -1,6 +1,6 @@
 from arango import ArangoClient
-from conceptnet_rocks import arangodb
 from conceptnet_rocks.conceptnet5.edges import transform_for_linked_data
+from graph_garden import arangodb
 from hashlib import sha1
 from pathlib import Path
 from tqdm import tqdm

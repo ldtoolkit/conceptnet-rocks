@@ -6,5 +6,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="lightning-conceptnet" />
     <orderEntry type="module" module-name="conceptnet5" />
+    <orderEntry type="module" module-name="graph-garden" />
   </component>
 </module>
