@@ -76,6 +76,8 @@ def load_dump_into_database(
             to_vertex_collections=["nodes"]
         )
 
+        db.create_collection("sources")
+
         dump_path = Path(dump_path).expanduser().resolve()
 
         df = dd.read_csv(dump_path, sep="\t", header=None)
@@ -84,17 +86,21 @@ def load_dump_into_database(
         if edge_count is None:
             edge_count = line_count(dump_path)
 
-        edge_list = []
         node_list = []
+        edge_list = []
+        source_list = []
 
         nodes_path = data_path / "nodes.jsonl"
         edges_path = data_path / "edges.jsonl"
+        sources_path = data_path / "sources.jsonl"
 
-        if not nodes_path.is_file() or not edges_path.is_file():
-            with open(nodes_path, "wb") as nodes_file, open(edges_path, "wb") as edges_file:
+        if not nodes_path.is_file() or not edges_path.is_file() or not sources_path.is_file():
+            with open(nodes_path, "wb") as nodes_file, \
+                    open(edges_path, "wb") as edges_file, \
+                    open(sources_path, "wb") as sources_file:
                 nodes_keys = set()
 
-                for row in tqdm(df.itertuples(), unit=' edges', total=edge_count):
+                for row in tqdm(df.itertuples(), unit=" edges", initial=1, total=edge_count):
                     i, assertion_uri, relation_uri, start_uri, end_uri, edge_data = row
 
                     start_uri += "/"
@@ -128,7 +134,10 @@ def load_dump_into_database(
                     start_node_id = get_node_id(start_node_key)
                     end_node_id = get_node_id(end_node_key)
 
+                    edge_key = convert_uri_to_ascii(assertion_uri)
+
                     edge_list.append({
+                        "_key": edge_key,
                         "_from": start_node_id,
                         "_to": end_node_id,
                         "uri": assertion_uri,
@@ -136,21 +145,28 @@ def load_dump_into_database(
                         **edge_data_dict,
                     })
 
+                    for source in edge_data_dict["sources"]:
+                        source_list.append({
+                            "edge_key": edge_key,
+                            **source,
+                        })
+
                     finished = i == edge_count - 1
                     if i % batch_size == 0 or finished:
-                        for node in node_list:
-                            nodes_file.write(orjson.dumps(node))
-                            nodes_file.write(b"\n")
-                        for edge in edge_list:
-                            edges_file.write(orjson.dumps(edge))
-                            edges_file.write(b"\n")
-                        node_list.clear()
-                        edge_list.clear()
+                        def write_to_file(f, item_list: List):
+                            for item in item_list:
+                                f.write(orjson.dumps(item))
+                                f.write(b"\n")
+                            item_list.clear()
+
+                        write_to_file(f=nodes_file, item_list=node_list)
+                        write_to_file(f=edges_file, item_list=edge_list)
+                        write_to_file(f=sources_file, item_list=source_list)
                         if finished:
                             break
 
         arangoimport_path = arangodb.get_exe_path(path=arangodb_exe_path, program_name="arangoimport")
-        for file_path, collection in [(nodes_path, "nodes"), (edges_path, "edges")]:
+        for file_path, collection in [(nodes_path, "nodes"), (edges_path, "edges"), (sources_path, "sources")]:
             subprocess.run([
                 arangoimport_path,
                 "--threads", f"{os.cpu_count()}",
@@ -169,6 +185,7 @@ def load_dump_into_database(
 
         nodes = db.collection("nodes")
         edges = db.collection("edges")
+        sources = db.collection("sources")
 
         print("Creating nodes.uri index")
         nodes.add_persistent_index(["uri"], unique=True)
@@ -178,14 +195,12 @@ def load_dump_into_database(
         edges.add_persistent_index(["rel"])
         print("Creating edges.uri index")
         edges.add_persistent_index(["uri"], unique=True)
-
-        # Docs (https://www.arangodb.com/docs/stable/indexing-index-basics.html#indexing-array-values):
-        # Please note that filtering using array indexes only works from within AQL queries and only if the query
-        # filters on the indexed attribute using the IN operator. The other comparison operators (==, !=, >, >=, <, <=,
-        # ANY, ALL, NONE) cannot use array indexes currently.
-        # edges.add_persistent_index(["sources[*].activity"])
-        # edges.add_persistent_index(["sources[*].contributor"])
-        # edges.add_persistent_index(["sources[*].process"])
+        print("Creating sources.activity index")
+        sources.add_persistent_index(["activity"])
+        print("Creating sources.contributor index")
+        sources.add_persistent_index(["contributor"])
+        print("Creating sources.process index")
+        sources.add_persistent_index(["process"])
 
 
 class AssertionFinder:
@@ -237,7 +252,7 @@ class AssertionFinder:
             }, unset(edge, "_from", "_to", "_key", "_id", "_rev", "dataset", "sources"))
         """
 
-        if uri.startswith('/c/') or uri.startswith('http'):
+        if uri.startswith("/c/") or uri.startswith("http"):
             query = f"""
                 for start_node in nodes
                   filter start_node.uri >= concat(@uri, "/") and start_node.uri < concat(@uri, "0")
@@ -246,7 +261,7 @@ class AssertionFinder:
             """
             query_vars = {"limit": limit, "offset": offset, "uri": uri}
             return perform_query(query=query, query_vars=query_vars)
-        elif uri.startswith('/r/'):
+        elif uri.startswith("/r/"):
             query = f"""
                 for edge in edges
                   filter edge.rel == @rel
@@ -254,22 +269,23 @@ class AssertionFinder:
             """
             query_vars = {"limit": limit, "offset": offset, "rel": uri}
             return perform_query(query=query, query_vars=query_vars)
-        elif uri.startswith('/s/'):
+        elif uri.startswith("/s/"):
             query = f"""
-                for edge in edges
-                  for s in edge.sources
-                    filter (
-                      (s.activity >= concat(@source, "/") and s.activity < concat(@source, "0"))
-                      or
-                      (s.contributor >= concat(@source, "/") and s.contributor < concat(@source, "0"))
-                      or
-                      (s.process >= concat(@source, "/") and s.process < concat(@source, "0"))
-                    )
+                for s in sources
+                  filter (
+                    (s.activity >= concat(@source, "/") and s.activity < concat(@source, "0"))
+                    or
+                    (s.contributor >= concat(@source, "/") and s.contributor < concat(@source, "0"))
+                    or
+                    (s.process >= concat(@source, "/") and s.process < concat(@source, "0"))
+                  )
+                  for edge in edges
+                    filter s.edge_key == edge._key
                     {limit_and_merge}
             """
             query_vars = {"limit": limit, "offset": offset, "source": uri}
             return perform_query(query=query, query_vars=query_vars)
-        elif uri.startswith('/d/'):
+        elif uri.startswith("/d/"):
             query = f"""
                 for edge in edges
                   filter edge.dataset >= concat(@dataset, "/") and edge.dataset < concat(@dataset, "0")
@@ -277,7 +293,7 @@ class AssertionFinder:
             """
             query_vars = {"limit": limit, "offset": offset, "dataset": uri}
             return perform_query(query=query, query_vars=query_vars)
-        elif uri.startswith('/a/'):
+        elif uri.startswith("/a/"):
             query = f"""
                 for edge in edges
                   filter edge.uri == @uri
@@ -294,3 +310,4 @@ class AssertionFinder:
 
 if __name__ == "__main__":
     af = AssertionFinder()
+    af.lookup("/s/resource/wiktionary/en")
