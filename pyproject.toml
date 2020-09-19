@@ -4,6 +4,13 @@ version = "0.1.0"
 description = "Python library to work with ConceptNet offline"
 authors = ["Roman Inflianskas <infroma@gmail.com>"]
 license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/ldtoolkit/conceptnet-rocks"
+repository = "https://github.com/ldtoolkit/conceptnet-rocks"
+keywords = ["arangodb", "conceptnet"]
+classifiers = [
+    "Topic :: Database",
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"
