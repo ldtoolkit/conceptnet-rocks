@@ -1,5 +1,9 @@
 # ConceptNet Rocks!
 
+[![License](https://img.shields.io/pypi/l/conceptnet-rocks.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/conceptnet-rocks.svg)
+[![PyPI](https://img.shields.io/pypi/v/conceptnet-rocks.svg)](https://pypi.org/project/conceptnet-rocks/)
+
 Work is in progress.
 
 The library comes with Apache License 2.0, and is separate from ConceptNet itself, although it uses some parts of its code. The ConceptNet is available under [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) license. See [here](https://github.com/commonsense/conceptnet5/wiki/Copying-and-sharing-ConceptNet) for the list of conditions for using ConceptNet data.
