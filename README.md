@@ -18,11 +18,7 @@ pip install conceptnet-rocks
 
 ### Install ArangoDB
 
-ConceptNet Rocks uses [ArangoDB](https://www.arangodb.com/) for storage, managed by a companion Python [Graph Garden library](https://github.com/ldtoolkit/graph-garden/). It is available in pip:
-
-```python
-pip install graph-garden
-```
+ConceptNet Rocks uses [ArangoDB](https://www.arangodb.com/) for storage, managed by a companion Python [Graph Garden library](https://github.com/ldtoolkit/graph-garden/)  that is automatically installed with ConceptNet Rocks.
 
 Graph Garden can manage the ArangoDB installation for you. To download the latest version of ArangoDB from official website and install it to `~/.arangodb` folder, simply run:
 
@@ -68,6 +64,40 @@ print(af.lookup("/d/wiktionary/en"))
 print(af.lookup("/a/[/r/Antonym/,/c/ang/gecyndelic/a/,/c/ang/ungecynde/]"))
 ```
 
+ConceptNet Rocks uses the same JSON-LD format as the original ConceptNet5:
+```python
+from conceptnet_rocks import AssertionFinder
+from pprint import pprint
+
+af = AssertionFinder()
+pprint(af.lookup("/c/en/blow_dryer"))
+# [
+# ...
+#  {'@id': '/a/[/r/AtLocation/,/c/en/blow_dryer/,/c/en/beauty_salon/]',
+#   '@type': 'Edge',
+#   'dataset': '/d/conceptnet/4/en',
+#   'end': {'@id': '/c/en/beauty_salon',
+#           '@type': 'Node',
+#           'label': 'a beauty salon',
+#           'language': 'en',
+#           'term': '/c/en/beauty_salon'},
+#   'license': 'cc:by/4.0',
+#   'rel': {'@id': '/r/AtLocation', '@type': 'Relation', 'label': 'AtLocation'},
+#   'sources': [{'@id': '/and/[/s/activity/omcs/omcs1_possibly_free_text/,/s/contributor/omcs/bedume/]',
+#                '@type': 'Source',
+#                'activity': '/s/activity/omcs/omcs1_possibly_free_text',
+#                'contributor': '/s/contributor/omcs/bedume'}],
+#   'start': {'@id': '/c/en/blow_dryer',
+#             '@type': 'Node',
+#             'label': 'a blow dryer',
+#             'language': 'en',
+#             'term': '/c/en/blow_dryer'},
+#   'surfaceText': 'You are likely to find [[a blow dryer]] in [[a beauty salon]]',
+#   'weight': 1.0}
+# ...
+# ]
+```
+
 ## FAQ
 
 ### Why did you create yet another library if original ConceptNet5 exists?
@@ -75,7 +105,7 @@ print(af.lookup("/a/[/r/Antonym/,/c/ang/gecyndelic/a/,/c/ang/ungecynde/]"))
 1. Performance. Our benchmark (https://github.com/ldtoolkit/conceptnet-benchmark) has shown that ConceptNet Rocks is
 almost 5 times faster than ConceptNet5 for querying assertions by concepts.
 2. The original ConceptNet5 library requires PostgreSQL. PostgreSQL does not support the graph databases as a primary model, while ArangoDB is a multi-model database for graph.
-1. PostgreSQL generally requires either root permissions to install it using a package manager, or the compilation step. Not anyone have root permissions on their machine or have the compiler installed. ConceptNet Rocks library uses ArangoDB, which can be installed without root permissions using simple command.
+3. PostgreSQL generally requires either root permissions to install it using a package manager, or the compilation step. Not anyone have root permissions on their machine or have the compiler installed. ConceptNet Rocks library uses ArangoDB, which can be installed without root permissions using simple command.
 
 ### Why is the library called ConceptNet Rocks?
 
