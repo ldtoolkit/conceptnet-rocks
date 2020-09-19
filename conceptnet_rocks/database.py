@@ -306,8 +306,3 @@ class AssertionFinder:
 
     def clear_cache(self) -> None:
         self._db.aql.cache.clear()
-
-
-if __name__ == "__main__":
-    af = AssertionFinder()
-    af.lookup("/s/resource/wiktionary/en")

@@ -65,7 +65,7 @@ description = "Python library for managing ArangoDB instance"
 name = "graph-garden"
 optional = false
 python-versions = ">=3.7,<4.0"
-version = "0.1.0"
+version = "0.1.2"
 
 [package.dependencies]
 appdirs = ">=1.4.4,<2.0.0"
@@ -205,7 +205,7 @@ description = "Fast, Extensible Progress Meter"
 name = "tqdm"
 optional = false
 python-versions = ">=2.6, !=3.0.*, !=3.1.*"
-version = "4.48.2"
+version = "4.49.0"
 
 [package.extras]
 dev = ["py-make (>=0.1.0)", "twine", "argopt", "pydoc-markdown"]
@@ -241,7 +241,7 @@ secure = ["certifi", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "pyOpenSSL (>=0
 socks = ["PySocks (>=1.5.6,<1.5.7 || >1.5.7,<2.0)"]
 
 [metadata]
-content-hash = "beeb7bca650005398924f2b4ccee6d5d938262bf050ee4ff28b0c15dbc04377d"
+content-hash = "b332d97636142fd48262c0713e49801d4caae2c1013ca49438b796258691c4b5"
 lock-version = "1.0"
 python-versions = "^3.7"
 
@@ -272,8 +272,8 @@ click = [
     {file = "click-7.1.2.tar.gz", hash = "sha256:d2b5255c7c6349bc1bd1e59e08cd12acbbd63ce649f2588755783aa94dfb6b1a"},
 ]
 graph-garden = [
-    {file = "graph-garden-0.1.0.tar.gz", hash = "sha256:c4f685d1db8ff979121131e5f83878a215d26061f30edfb1a49e72bb97d6e809"},
-    {file = "graph_garden-0.1.0-py3-none-any.whl", hash = "sha256:517d89c57abb2f8cc44c3a209bdaf577dd97746193d20576277923a903aac5e4"},
+    {file = "graph-garden-0.1.2.tar.gz", hash = "sha256:538066c5874eb23f49f183783bd0addab4f59e0d8a2e8ae0a565ec441fcb8b97"},
+    {file = "graph_garden-0.1.2-py3-none-any.whl", hash = "sha256:198ab67023bb444707606b2de7652ce768f135457c6f60902ad4fabaf9665270"},
 ]
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
@@ -377,8 +377,8 @@ tornado = [
     {file = "tornado-4.5.3.tar.gz", hash = "sha256:6d14e47eab0e15799cf3cdcc86b0b98279da68522caace2bd7ce644287685f0a"},
 ]
 tqdm = [
-    {file = "tqdm-4.48.2-py2.py3-none-any.whl", hash = "sha256:1a336d2b829be50e46b84668691e0a2719f26c97c62846298dd5ae2937e4d5cf"},
-    {file = "tqdm-4.48.2.tar.gz", hash = "sha256:564d632ea2b9cb52979f7956e093e831c28d441c11751682f84c86fc46e4fd21"},
+    {file = "tqdm-4.49.0-py2.py3-none-any.whl", hash = "sha256:8f3c5815e3b5e20bc40463fa6b42a352178859692a68ffaa469706e6d38342a5"},
+    {file = "tqdm-4.49.0.tar.gz", hash = "sha256:faf9c671bd3fad5ebaeee366949d969dca2b2be32c872a7092a1e1a9048d105b"},
 ]
 typer = [
     {file = "typer-0.3.2-py3-none-any.whl", hash = "sha256:ba58b920ce851b12a2d790143009fa00ac1d05b3ff3257061ff69dbdfc3d161b"},
