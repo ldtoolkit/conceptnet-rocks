@@ -234,38 +234,46 @@ class AssertionFinder:
                 for data in self._db.aql.execute(query, bind_vars=query_vars)
             ]
 
-        limit_and_merge = """
-            limit @offset, @limit
-            let trimmed_sources = (
-              for source in edge.sources
-                return merge(
-                  has(source, "activity") ? {activity: rtrim(source.activity, "/")} : {},
-                  has(source, "contributor") ? {contributor: rtrim(source.contributor, "/")} : {},
-                  has(source, "process") ? {process: rtrim(source.process, "/")} : {}
+        def limit_and_merge(add_origin_node_uri: bool = False):
+            return """
+                limit @offset, @limit
+                let trimmed_sources = (
+                  for source in edge.sources
+                    return merge(
+                      has(source, "activity") ? {activity: rtrim(source.activity, "/")} : {},
+                      has(source, "contributor") ? {contributor: rtrim(source.contributor, "/")} : {},
+                      has(source, "process") ? {process: rtrim(source.process, "/")} : {}
+                    )
                 )
-            )
-            return distinct merge({
-              start: rtrim(document(edge._from).uri, "/"),
-              end: rtrim(document(edge._to).uri, "/"),
-              dataset: rtrim(edge.dataset, "/"),
-              sources: trimmed_sources,
-            }, unset(edge, "_from", "_to", "_key", "_id", "_rev", "dataset", "sources"))
-        """
+                return distinct merge({
+                  start: rtrim(document(edge._from).uri, "/"),
+                  end: rtrim(document(edge._to).uri, "/"),
+                  dataset: rtrim(edge.dataset, "/"),
+                  sources: trimmed_sources,
+                },
+                  unset(edge, "_from", "_to", "_key", "_id", "_rev", "dataset", "sources")
+            """ + (", {origin_node_uri: start_node.uri}" if add_origin_node_uri else "") + ")"
 
         if uri.startswith("/c/") or uri.startswith("http"):
+            # Filter assertions by origin node uri on Python side, fix for:
+            # https://stackoverflow.com/questions/64040294/arangodb-query-returns-extra-items-with-diacritic-marks
             query = f"""
                 for start_node in nodes
                   filter start_node.uri >= concat(@uri, "/") and start_node.uri < concat(@uri, "0")
                   for node, edge in any start_node edges
-                  {limit_and_merge}
+                  {limit_and_merge(add_origin_node_uri=True)}
             """
             query_vars = {"limit": limit, "offset": offset, "uri": uri}
-            return perform_query(query=query, query_vars=query_vars)
+            return [
+                {key: value for key, value in d.items() if key != "origin_node_uri"}
+                for d in perform_query(query=query, query_vars=query_vars)
+                if f"{uri}/" <= d["origin_node_uri"] < f"{uri}0"
+            ]
         elif uri.startswith("/r/"):
             query = f"""
                 for edge in edges
                   filter edge.rel == @rel
-                  {limit_and_merge}
+                  {limit_and_merge()}
             """
             query_vars = {"limit": limit, "offset": offset, "rel": uri}
             return perform_query(query=query, query_vars=query_vars)
@@ -281,7 +289,7 @@ class AssertionFinder:
                   )
                   for edge in edges
                     filter s.edge_key == edge._key
-                    {limit_and_merge}
+                    {limit_and_merge()}
             """
             query_vars = {"limit": limit, "offset": offset, "source": uri}
             return perform_query(query=query, query_vars=query_vars)
@@ -289,7 +297,7 @@ class AssertionFinder:
             query = f"""
                 for edge in edges
                   filter edge.dataset >= concat(@dataset, "/") and edge.dataset < concat(@dataset, "0")
-                  {limit_and_merge}
+                  {limit_and_merge()}
             """
             query_vars = {"limit": limit, "offset": offset, "dataset": uri}
             return perform_query(query=query, query_vars=query_vars)
@@ -297,7 +305,7 @@ class AssertionFinder:
             query = f"""
                 for edge in edges
                   filter edge.uri == @uri
-                  {limit_and_merge}
+                  {limit_and_merge()}
             """
             query_vars = {"limit": limit, "offset": offset, "uri": uri}
             return perform_query(query=query, query_vars=query_vars)
